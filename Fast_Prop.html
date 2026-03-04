@@ -1,0 +1,805 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+  <title>Fast Propagator 🛰️</title>
+  <script src="https://cdn.jsdelivr.net/npm/satellite.js@4.1.3/dist/satellite.min.js"></script>
+  <style>
+    :root {
+      --bg:      #0d1117;
+      --card:    #161b22;
+      --border:  #21262d;
+      --accent:  #58a6ff;
+      --green:   #3fb950;
+      --orange:  #f0883e;
+      --red:     #f85149;
+      --yellow:  #e3b341;
+      --text:    #e6edf3;
+      --muted:   #7d8590;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      padding-bottom: 3rem;
+    }
+
+    /* ── HEADER ── */
+    header {
+      background: linear-gradient(180deg, #1c2333 0%, var(--bg) 100%);
+      padding: 1rem;
+      text-align: center;
+      border-bottom: 1px solid var(--border);
+      position: sticky; top: 0; z-index: 100;
+    }
+    header h1 { font-size: 1.35rem; font-weight: 700; letter-spacing: .05em; }
+    header p  { color: var(--muted); font-size: .75rem; margin-top: .15rem; }
+
+    /* ── LAYOUT ── */
+    .container {
+      max-width: 900px;
+      margin: 0 auto;
+      padding: 1rem;
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+    }
+
+    /* ── CARD ── */
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 1rem 1.2rem;
+    }
+    .card-title {
+      font-size: .7rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: .12em;
+      color: var(--muted);
+      margin-bottom: .9rem;
+    }
+
+    /* ── BUTTONS ── */
+    .btn {
+      display: inline-flex; align-items: center; justify-content: center; gap: .3rem;
+      padding: .45rem 1rem;
+      border: none; border-radius: 6px;
+      cursor: pointer; font-size: .875rem; font-weight: 500;
+      transition: filter .15s; white-space: nowrap;
+    }
+    .btn:hover  { filter: brightness(1.12); }
+    .btn:active { filter: brightness(.88); }
+    .btn-primary { background: var(--accent); color: #0d1117; }
+    .btn-success { background: var(--green);  color: #0d1117; }
+
+    /* ── CHIP ── */
+    .chip {
+      display: inline-flex; align-items: center;
+      padding: .25rem .75rem;
+      border-radius: 20px; font-size: .78rem; font-weight: 500;
+      cursor: pointer;
+      border: 1px solid var(--border);
+      color: var(--muted); background: transparent;
+      transition: all .15s;
+    }
+    .chip:hover, .chip.active {
+      border-color: var(--accent); color: var(--accent);
+      background: rgba(88,166,255,.1);
+    }
+    .chip-group { display: flex; flex-wrap: wrap; gap: .4rem; margin-bottom: .75rem; }
+
+    /* ── FORM ── */
+    .form-label { display: block; font-size: .73rem; color: var(--muted); margin-bottom: .28rem; }
+
+    input[type="text"],
+    input[type="number"] {
+      background: var(--bg); border: 1px solid var(--border);
+      color: var(--text); border-radius: 6px;
+      padding: .45rem .75rem; font-size: .875rem; width: 100%;
+      transition: border-color .15s;
+    }
+    input:focus { outline: none; border-color: var(--accent); }
+
+    .row { display: flex; gap: .6rem; flex-wrap: wrap; align-items: flex-end; }
+    .col      { flex: 1; min-width: 100px; }
+    .col-auto { flex: 0 0 auto; }
+
+    hr.div { border: none; border-top: 1px solid var(--border); margin: .85rem 0; }
+
+    /* ── UPLOAD ZONE ── */
+    .upload-zone {
+      border: 2px dashed var(--border); border-radius: 8px;
+      padding: 1rem; text-align: center; cursor: pointer;
+      color: var(--muted); font-size: .85rem;
+      transition: border-color .15s, background .15s;
+    }
+    .upload-zone:hover { border-color: var(--accent); color: var(--accent); background: rgba(88,166,255,.05); }
+    .upload-hint { font-size: .7rem; margin-top: .2rem; }
+
+    /* ── TLE INFO ── */
+    .tle-info {
+      background: var(--bg); border-radius: 6px; padding: .6rem .8rem;
+      margin-top: .6rem; display: none;
+    }
+    .tle-name { font-weight: 700; color: var(--accent); font-size: 1rem; }
+    .tle-line { font-family: monospace; font-size: .68rem; color: var(--muted); word-break: break-all; margin-top: .1rem; }
+
+    /* ── METRICS ── */
+    .metrics-grid { display: grid; grid-template-columns: repeat(2,1fr); gap: .6rem; margin-top: .7rem; }
+    @media(min-width:480px) { .metrics-grid { grid-template-columns: repeat(4,1fr); } }
+
+    .metric-card {
+      background: var(--bg); border: 1px solid var(--border);
+      border-radius: 8px; padding: .75rem .5rem; text-align: center;
+    }
+    .metric-label { font-size: .65rem; color: var(--muted); text-transform: uppercase; letter-spacing: .1em; margin-bottom: .25rem; }
+    .metric-value { font-size: 1.5rem; font-weight: 700; font-family: 'SF Mono','Fira Code',monospace; line-height: 1.1; }
+    .metric-unit  { font-size: .68rem; color: var(--muted); margin-top: .1rem; }
+    .c-green  { color: var(--green); }
+    .c-blue   { color: var(--accent); }
+    .c-orange { color: var(--orange); }
+
+    /* ── STATUS ROW ── */
+    .status-row { display: flex; align-items: center; gap: .55rem; font-size: .84rem; flex-wrap: wrap; }
+    .pulse { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+    .pulse.on  { background: var(--green); animation: blink 1.2s infinite; }
+    .pulse.off { background: var(--muted); }
+    .pulse.err { background: var(--red); }
+    @keyframes blink { 0%,100%{opacity:1} 50%{opacity:.3} }
+
+    .badge { display: inline-block; padding: .12rem .45rem; border-radius: 20px; font-size: .7rem; font-weight: 600; }
+    .b-above { background: rgba(63,185,80,.2);   color: var(--green); }
+    .b-below { background: rgba(125,133,144,.2); color: var(--muted); }
+
+    /* ── TOGGLE SWITCH ── */
+    .toggle-wrap {
+      display: flex; align-items: center; gap: .55rem;
+      cursor: pointer; user-select: none;
+    }
+    .toggle-track {
+      position: relative; width: 44px; height: 24px;
+      background: var(--border); border-radius: 12px;
+      transition: background .2s; flex-shrink: 0;
+    }
+    .toggle-track.on { background: var(--accent); }
+    .toggle-knob {
+      position: absolute; top: 3px; left: 3px;
+      width: 18px; height: 18px; border-radius: 50%;
+      background: #fff; transition: transform .2s;
+      box-shadow: 0 1px 3px rgba(0,0,0,.4);
+    }
+    .toggle-track.on .toggle-knob { transform: translateX(20px); }
+    .toggle-label { font-size: .85rem; color: var(--text); font-weight: 500; }
+    .toggle-sub   { font-size: .72rem; color: var(--muted); }
+
+    /* ── PROGRESS ── */
+    .progress { height: 3px; background: var(--border); border-radius: 2px; margin-top: .45rem; overflow: hidden; }
+    .progress-bar { height: 100%; background: var(--accent); transition: width .2s; }
+
+    /* ── PASS TABLE ── */
+    .table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; margin-top: .5rem; }
+    table { width: 100%; border-collapse: collapse; font-size: .79rem; min-width: 640px; }
+    th {
+      background: var(--bg); color: var(--muted);
+      padding: .45rem .6rem; text-align: left;
+      font-size: .65rem; text-transform: uppercase; letter-spacing: .05em;
+      white-space: nowrap; font-weight: 600;
+    }
+    td { padding: .5rem .6rem; border-top: 1px solid var(--border); white-space: nowrap; }
+    tr:hover td { background: rgba(88,166,255,.04); }
+
+    .el-badge { display: inline-block; padding: .08rem .42rem; border-radius: 4px; font-weight: 700; font-size: .77rem; }
+    .el-low  { background: rgba(248,81,73,.2);  color: var(--red); }
+    .el-med  { background: rgba(227,179,65,.2); color: var(--yellow); }
+    .el-high { background: rgba(63,185,80,.2);  color: var(--green); }
+
+    /* ── MESSAGES ── */
+    .msg-box { text-align: center; padding: 1.8rem 1rem; color: var(--muted); font-size: .875rem; }
+    .msg { font-size: .8rem; margin-top: .4rem; }
+    .msg.err  { color: var(--red); }
+    .msg.ok   { color: var(--green); }
+    .msg.info { color: var(--muted); }
+
+    .sat-file-list { display: flex; flex-wrap: wrap; gap: .4rem; margin-top: .5rem; }
+    .rt-footer { text-align: right; font-size: .7rem; color: var(--muted); margin-top: .45rem; }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>🛰️ Fast Propagator</h1>
+  <p>Satellite Tracker &amp; Pass Predictor</p>
+</header>
+
+<div class="container">
+
+  <!-- ══════════ SATELLITE ══════════ -->
+  <div class="card">
+    <div class="card-title">🛰 Satellite Selection</div>
+
+    <div class="chip-group">
+      <button class="chip" id="chipCoral" onclick="selectDefaultSat()">CORAL · 67685</button>
+    </div>
+
+    <div class="row">
+      <div class="col">
+        <label class="form-label">Satellite ID (NORAD CATNR)</label>
+        <input type="text" id="satId" placeholder="e.g. 67685" />
+      </div>
+      <div class="col-auto" style="padding-bottom:1px">
+        <button class="btn btn-primary" onclick="fetchTLE()">⬇ Download TLE</button>
+      </div>
+    </div>
+    <div id="fetchMsg"></div>
+
+    <hr class="div" />
+
+    <label class="form-label">Or load a TLE file (.txt)</label>
+    <div class="upload-zone" onclick="document.getElementById('tleFile').click()">
+      📂 Click to load a TLE file
+      <div class="upload-hint">Format: name · line 1 · line 2 (repeated for multiple satellites)</div>
+      <input type="file" id="tleFile" accept=".txt" style="display:none" onchange="loadTLEFile(event)" />
+    </div>
+
+    <div id="satFileSection" style="display:none">
+      <label class="form-label" style="margin-top:.7rem">Satellites in file:</label>
+      <div class="sat-file-list" id="satFileChips"></div>
+    </div>
+
+    <div class="tle-info" id="tleInfoBox">
+      <div class="tle-name" id="tleNameDisp"></div>
+      <div class="tle-line" id="tleLine1Disp"></div>
+      <div class="tle-line" id="tleLine2Disp"></div>
+    </div>
+  </div>
+
+  <!-- ══════════ OBSERVER LOCATION ══════════ -->
+  <div class="card">
+    <div class="card-title">📍 Observer Location</div>
+
+    <div class="chip-group">
+      <button class="chip" id="chipRome" onclick="selectDefaultLoc()">Rome · 12.4920 E · 41.8997 N</button>
+    </div>
+
+    <div class="row">
+      <div class="col">
+        <label class="form-label">Longitude (°E)</label>
+        <input type="number" id="lon" step="0.0001" placeholder="12.4920" />
+      </div>
+      <div class="col">
+        <label class="form-label">Latitude (°N)</label>
+        <input type="number" id="lat" step="0.0001" placeholder="41.8997" />
+      </div>
+      <div class="col" style="max-width:115px">
+        <label class="form-label">Altitude (m)</label>
+        <input type="number" id="alt" step="1" placeholder="50" />
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════ REAL-TIME ══════════ -->
+  <div class="card">
+    <div class="card-title">📡 Real-Time Data</div>
+
+    <div class="status-row">
+      <div class="pulse off" id="rtPulse"></div>
+      <span id="rtStatusText">Waiting for satellite data…</span>
+      <span id="rtBadge"></span>
+    </div>
+
+    <div class="metrics-grid">
+      <div class="metric-card">
+        <div class="metric-label">Azimuth</div>
+        <div class="metric-value c-blue"   id="rtAz">---</div>
+        <div class="metric-unit">°</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-label">Elevation</div>
+        <div class="metric-value c-green"  id="rtEl">---</div>
+        <div class="metric-unit">°</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-label">Sat. Altitude</div>
+        <div class="metric-value c-orange" id="rtAlt">---</div>
+        <div class="metric-unit">km</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-label">Range</div>
+        <div class="metric-value c-blue"   id="rtRange">---</div>
+        <div class="metric-unit">km</div>
+      </div>
+    </div>
+    <div class="rt-footer" id="rtClock">-</div>
+  </div>
+
+  <!-- ══════════ PASS PREDICTION ══════════ -->
+  <div class="card">
+    <div class="card-title">🔭 Pass Prediction</div>
+
+    <div class="row" style="align-items:flex-end">
+      <div class="col">
+        <label class="form-label">Propagation window (hours)</label>
+        <input type="number" id="propHours" value="24" min="1" max="720" />
+      </div>
+      <div class="col" style="max-width:145px">
+        <label class="form-label">Min. max elevation (°)</label>
+        <input type="number" id="minElFilter" value="0" min="0" max="90" />
+      </div>
+      <!-- Direction toggle -->
+      <div class="col-auto" style="padding-bottom:6px">
+        <label class="form-label">Direction</label>
+        <div class="toggle-wrap" onclick="toggleDir()" id="dirToggleWrap">
+          <div class="toggle-track" id="dirTrack">
+            <div class="toggle-knob"></div>
+          </div>
+          <div>
+            <div class="toggle-label" id="dirLabel">▶ Forward</div>
+            <div class="toggle-sub">from now into the future</div>
+          </div>
+        </div>
+      </div>
+      <div class="col-auto" style="padding-bottom:6px">
+        <button class="btn btn-success" id="calcBtn" onclick="computePasses()">⚙ Compute</button>
+      </div>
+    </div>
+
+    <div id="passProgress" style="display:none">
+      <div class="msg info" id="progressLabel">Computing… 0%</div>
+      <div class="progress"><div class="progress-bar" id="progressBar" style="width:0%"></div></div>
+    </div>
+
+    <div id="passResults">
+      <div class="msg-box">Load a TLE and press "Compute" to see passes</div>
+    </div>
+  </div>
+
+</div><!-- /container -->
+
+<script>
+/* ══════════════════════════════════════════════════════════════
+   STATE
+══════════════════════════════════════════════════════════════ */
+let currentSatrec  = null;
+let currentTLEName = '';
+let rtInterval     = null;
+let fileSatellites = [];
+let dirForward     = true;   // true = forward, false = backward
+
+const DEFAULTS = {
+  sat: { id: '67685', name: 'CORAL' },
+  loc: { lon: 12.4920, lat: 41.8997, alt: 50 }
+};
+
+/* ══════════════════════════════════════════════════════════════
+   INIT
+══════════════════════════════════════════════════════════════ */
+window.addEventListener('DOMContentLoaded', () => {
+  selectDefaultLoc();
+
+  ['lon','lat','alt'].forEach(id =>
+    document.getElementById(id).addEventListener('input', () =>
+      document.getElementById('chipRome').classList.remove('active')
+    )
+  );
+});
+
+/* ══════════════════════════════════════════════════════════════
+   DIRECTION TOGGLE
+══════════════════════════════════════════════════════════════ */
+function toggleDir() {
+  dirForward = !dirForward;
+  const track = document.getElementById('dirTrack');
+  const label = document.getElementById('dirLabel');
+  const sub   = document.querySelector('#dirToggleWrap .toggle-sub');
+
+  if (dirForward) {
+    track.classList.add('on');
+    label.textContent = '▶ Forward';
+    sub.textContent   = 'from now into the future';
+  } else {
+    track.classList.remove('on');
+    label.textContent = '◀ Backward';
+    sub.textContent   = 'from now into the past';
+  }
+}
+
+// Start with toggle in "on" (forward) state
+window.addEventListener('DOMContentLoaded', () => {
+  document.getElementById('dirTrack').classList.add('on');
+});
+
+/* ══════════════════════════════════════════════════════════════
+   SATELLITE SELECTION
+══════════════════════════════════════════════════════════════ */
+function selectDefaultSat() {
+  document.getElementById('satId').value = DEFAULTS.sat.id;
+  document.getElementById('chipCoral').classList.add('active');
+  fetchTLE();
+}
+
+/* ══════════════════════════════════════════════════════════════
+   LOCATION SELECTION
+══════════════════════════════════════════════════════════════ */
+function selectDefaultLoc() {
+  document.getElementById('lon').value = DEFAULTS.loc.lon;
+  document.getElementById('lat').value = DEFAULTS.loc.lat;
+  document.getElementById('alt').value = DEFAULTS.loc.alt;
+  document.getElementById('chipRome').classList.add('active');
+}
+
+/* ══════════════════════════════════════════════════════════════
+   TLE FETCH FROM CELESTRAK
+══════════════════════════════════════════════════════════════ */
+async function fetchTLE() {
+  const rawId = document.getElementById('satId').value.trim();
+  if (!rawId) { showMsg('fetchMsg', 'Enter a NORAD satellite ID', 'err'); return; }
+
+  showMsg('fetchMsg', '⏳ Downloading from CelesTrak…', 'info');
+
+  const url = `https://celestrak.org/NORAD/elements/gp.php?CATNR=${rawId}&FORMAT=TLE`;
+
+  try {
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const text = await res.text();
+
+    const lines = text.trim().split('\n').map(l => l.trim()).filter(Boolean);
+    if (lines.length < 3) throw new Error('TLE not found — check the ID');
+
+    const name  = lines[0];
+    const line1 = lines.find(l => l.startsWith('1 '));
+    const line2 = lines.find(l => l.startsWith('2 '));
+    if (!line1 || !line2) throw new Error('Invalid TLE format in response');
+
+    loadTLE(name, line1, line2);
+    showMsg('fetchMsg', `✓ TLE downloaded: ${name}`, 'ok');
+
+    if (rawId !== DEFAULTS.sat.id) document.getElementById('chipCoral').classList.remove('active');
+
+  } catch (e) {
+    showMsg('fetchMsg', `✗ ${e.message}. You can load a TLE file manually.`, 'err');
+  }
+}
+
+/* ══════════════════════════════════════════════════════════════
+   TLE FILE LOAD
+══════════════════════════════════════════════════════════════ */
+function loadTLEFile(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+
+  const reader = new FileReader();
+  reader.onload = e => {
+    fileSatellites = parseTLEText(e.target.result);
+
+    if (!fileSatellites.length) {
+      showMsg('fetchMsg', '✗ No valid TLE entries found in file', 'err');
+      return;
+    }
+
+    showMsg('fetchMsg', `✓ ${fileSatellites.length} satellite(s) found in file`, 'ok');
+
+    const section = document.getElementById('satFileSection');
+    const chips   = document.getElementById('satFileChips');
+    section.style.display = 'block';
+    chips.innerHTML = '';
+
+    fileSatellites.forEach(sat => {
+      const btn = document.createElement('button');
+      btn.className   = 'chip';
+      btn.textContent = sat.name;
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('#satFileChips .chip').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        document.getElementById('chipCoral').classList.remove('active');
+        loadTLE(sat.name, sat.line1, sat.line2);
+      });
+      chips.appendChild(btn);
+    });
+  };
+  reader.readAsText(file);
+  event.target.value = '';
+}
+
+function parseTLEText(text) {
+  const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
+  const sats  = [];
+  let i = 0;
+  while (i < lines.length) {
+    if (
+      i + 2 < lines.length &&
+      lines[i + 1].startsWith('1 ') &&
+      lines[i + 2].startsWith('2 ')
+    ) {
+      sats.push({ name: lines[i], line1: lines[i + 1], line2: lines[i + 2] });
+      i += 3;
+    } else {
+      i++;
+    }
+  }
+  return sats;
+}
+
+/* ══════════════════════════════════════════════════════════════
+   LOAD TLE INTO TRACKER
+══════════════════════════════════════════════════════════════ */
+function loadTLE(name, line1, line2) {
+  try {
+    const satrec = satellite.twoline2satrec(line1.trim(), line2.trim());
+    if (!satrec) throw new Error('Parsing failed');
+
+    currentSatrec  = satrec;
+    currentTLEName = name.trim();
+
+    const box = document.getElementById('tleInfoBox');
+    box.style.display = 'block';
+    document.getElementById('tleNameDisp').textContent  = currentTLEName;
+    document.getElementById('tleLine1Disp').textContent = line1.trim();
+    document.getElementById('tleLine2Disp').textContent = line2.trim();
+
+    startRealtime();
+  } catch (e) {
+    showMsg('fetchMsg', `✗ TLE parsing error: ${e.message}`, 'err');
+  }
+}
+
+/* ══════════════════════════════════════════════════════════════
+   REAL-TIME TRACKING
+══════════════════════════════════════════════════════════════ */
+function startRealtime() {
+  if (rtInterval) clearInterval(rtInterval);
+  updateRealtime();
+  rtInterval = setInterval(updateRealtime, 1000);
+}
+
+function getObserver() {
+  return {
+    lon: parseFloat(document.getElementById('lon').value) || DEFAULTS.loc.lon,
+    lat: parseFloat(document.getElementById('lat').value) || DEFAULTS.loc.lat,
+    alt: parseFloat(document.getElementById('alt').value) || DEFAULTS.loc.alt
+  };
+}
+
+function computeSatPos(satrec, date, obs) {
+  try {
+    const pv = satellite.propagate(satrec, date);
+    if (!pv || !pv.position || pv.position === false) return null;
+
+    const gmst  = satellite.gstime(date);
+    const posEci = pv.position;
+    const posGd  = satellite.eciToGeodetic(posEci, gmst);
+
+    const obsGd = {
+      longitude: satellite.degreesToRadians(obs.lon),
+      latitude:  satellite.degreesToRadians(obs.lat),
+      height:    obs.alt / 1000   // m → km
+    };
+
+    const posEcf = satellite.eciToEcf(posEci, gmst);
+    const look   = satellite.ecfToLookAngles(obsGd, posEcf);
+
+    return {
+      az:    satellite.radiansToDegrees(look.azimuth),
+      el:    satellite.radiansToDegrees(look.elevation),
+      range: look.rangeSat,   // km
+      alt:   posGd.height     // km
+    };
+  } catch { return null; }
+}
+
+function updateRealtime() {
+  if (!currentSatrec) return;
+
+  const obs = getObserver();
+  const now = new Date();
+  const pos = computeSatPos(currentSatrec, now, obs);
+
+  const pulse  = document.getElementById('rtPulse');
+  const status = document.getElementById('rtStatusText');
+  const badge  = document.getElementById('rtBadge');
+
+  if (!pos) {
+    pulse.className   = 'pulse err';
+    status.textContent = 'Error computing satellite position';
+    badge.innerHTML   = '';
+    return;
+  }
+
+  document.getElementById('rtAz').textContent    = pos.az.toFixed(1);
+  document.getElementById('rtEl').textContent    = pos.el.toFixed(1);
+  document.getElementById('rtAlt').textContent   = pos.alt.toFixed(1);
+  document.getElementById('rtRange').textContent = pos.range.toFixed(1);
+
+  const utcStr   = now.toISOString().replace('T',' ').substring(0,19) + ' UTC';
+  const localStr = now.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit',second:'2-digit'});
+  document.getElementById('rtClock').textContent = `${utcStr}  |  Local: ${localStr}`;
+
+  if (pos.el > 0) {
+    pulse.className    = 'pulse on';
+    status.textContent = `${currentTLEName} — above the horizon`;
+    badge.innerHTML    = '<span class="badge b-above">▲ Visible</span>';
+  } else {
+    pulse.className    = 'pulse off';
+    status.textContent = `${currentTLEName} — below the horizon`;
+    badge.innerHTML    = '<span class="badge b-below">▼ Not visible</span>';
+  }
+}
+
+/* ══════════════════════════════════════════════════════════════
+   PASS PREDICTION
+══════════════════════════════════════════════════════════════ */
+async function computePasses() {
+  if (!currentSatrec) {
+    document.getElementById('passResults').innerHTML =
+      '<div class="msg-box" style="color:var(--red)">⚠ Load a satellite TLE first</div>';
+    return;
+  }
+
+  const obs        = getObserver();
+  const hours      = Math.max(1, parseFloat(document.getElementById('propHours').value) || 24);
+  const dir        = dirForward ? 1 : -1;
+  const minEl      = parseFloat(document.getElementById('minElFilter').value) || 0;
+  const stepSec    = 10;
+  const totalSteps = Math.floor(hours * 3600 / stepSec);
+  const now        = new Date();
+
+  document.getElementById('passProgress').style.display = 'block';
+  document.getElementById('progressBar').style.width    = '0%';
+  document.getElementById('progressLabel').textContent  = 'Computing… 0%';
+  document.getElementById('passResults').innerHTML      = '';
+  document.getElementById('calcBtn').disabled = true;
+
+  const passes = [];
+  let inPass   = false;
+  let pd       = null;
+
+  await new Promise(resolve => {
+    let step      = 0;
+    const CHUNK   = 500;
+
+    function runChunk() {
+      const end = Math.min(step + CHUNK, totalSteps);
+
+      for (; step < end; step++) {
+        const t   = new Date(now.getTime() + dir * step * stepSec * 1000);
+        const pos = computeSatPos(currentSatrec, t, obs);
+        if (!pos) continue;
+
+        if (!inPass && pos.el > 0) {
+          inPass = true;
+          pd = { scanStart: t, aosAz: pos.az, maxEl: pos.el, maxElTime: t, maxElAz: pos.az, losAz: pos.az };
+
+        } else if (inPass && pos.el > 0) {
+          if (pos.el > pd.maxEl) { pd.maxEl = pos.el; pd.maxElTime = t; pd.maxElAz = pos.az; }
+          pd.losAz = pos.az;
+
+        } else if (inPass && pos.el <= 0) {
+          inPass = false;
+          pd.scanEnd = t;
+          finalizePass(pd, passes, minEl, dir);
+          pd = null;
+        }
+      }
+
+      const pct = Math.round(step / totalSteps * 100);
+      document.getElementById('progressBar').style.width   = pct + '%';
+      document.getElementById('progressLabel').textContent = `Computing… ${pct}%`;
+
+      if (step < totalSteps) {
+        setTimeout(runChunk, 0);
+      } else {
+        if (inPass && pd) {
+          pd.scanEnd = new Date(now.getTime() + dir * step * stepSec * 1000);
+          finalizePass(pd, passes, minEl, dir);
+        }
+        resolve();
+      }
+    }
+
+    runChunk();
+  });
+
+  document.getElementById('passProgress').style.display = 'none';
+  document.getElementById('calcBtn').disabled = false;
+
+  passes.sort((a, b) => a.aos - b.aos);
+  renderPasses(passes, minEl, hours, dir);
+}
+
+function finalizePass(pd, passes, minEl, dir) {
+  if (pd.maxEl < minEl) return;
+
+  /* Forward scan:  scanStart < scanEnd → AOS = scanStart, LOS = scanEnd
+     Backward scan: scanStart > scanEnd → AOS = scanEnd,   LOS = scanStart */
+  const fwd   = dir > 0;
+  const aos   = fwd ? pd.scanStart : pd.scanEnd;
+  const los   = fwd ? pd.scanEnd   : pd.scanStart;
+  const aosAz = fwd ? pd.aosAz     : pd.losAz;
+  const losAz = fwd ? pd.losAz     : pd.aosAz;
+
+  passes.push({ aos, los, aosAz, losAz, maxEl: pd.maxEl, maxElTime: pd.maxElTime, maxElAz: pd.maxElAz });
+}
+
+function renderPasses(passes, minEl, hours, dir) {
+  const container = document.getElementById('passResults');
+
+  if (!passes.length) {
+    const filt   = minEl > 0 ? ` with max elevation ≥ ${minEl}°` : '';
+    const dirTxt = dir > 0 ? 'ahead' : 'back';
+    container.innerHTML = `<div class="msg-box">No passes found${filt} in the next ${hours}h ${dirTxt}</div>`;
+    return;
+  }
+
+  const dirLabel  = dir > 0 ? 'forward' : 'backward';
+  const filtLabel = minEl > 0 ? ` &mdash; Max El ≥ ${minEl}°` : '';
+
+  let html = `
+    <div style="font-size:.8rem;color:var(--muted);margin:.5rem 0 .6rem">
+      <strong style="color:var(--text)">${passes.length}</strong> passes &mdash;
+      ${hours}h ${dirLabel}${filtLabel}
+      &nbsp;·&nbsp; All times in UTC
+    </div>
+    <div class="table-wrap">
+    <table>
+      <thead><tr>
+        <th>#</th>
+        <th>AOS (UTC)</th><th>Az AOS</th>
+        <th>TCA (UTC)</th><th>Max El</th><th>Az TCA</th>
+        <th>LOS (UTC)</th><th>Az LOS</th>
+        <th>Duration</th>
+      </tr></thead>
+      <tbody>
+  `;
+
+  passes.forEach((p, i) => {
+    const durSec = (p.los && p.aos) ? Math.abs(Math.round((p.los - p.aos) / 1000)) : null;
+    const durStr = durSec !== null
+      ? `${Math.floor(durSec / 60)}m ${String(durSec % 60).padStart(2,'0')}s`
+      : '—';
+
+    let elCls = 'el-low';
+    if      (p.maxEl >= 45) elCls = 'el-high';
+    else if (p.maxEl >= 15) elCls = 'el-med';
+
+    html += `<tr>
+      <td>${i + 1}</td>
+      <td style="font-family:monospace;font-size:.75rem">${fmtUTC(p.aos)}</td>
+      <td>${deg(p.aosAz)}</td>
+      <td style="font-family:monospace;font-size:.75rem">${fmtUTC(p.maxElTime)}</td>
+      <td><span class="el-badge ${elCls}">${p.maxEl.toFixed(1)}°</span></td>
+      <td>${deg(p.maxElAz)}</td>
+      <td style="font-family:monospace;font-size:.75rem">${fmtUTC(p.los)}</td>
+      <td>${deg(p.losAz)}</td>
+      <td>${durStr}</td>
+    </tr>`;
+  });
+
+  html += '</tbody></table></div>';
+  container.innerHTML = html;
+}
+
+/* ══════════════════════════════════════════════════════════════
+   UTILS
+══════════════════════════════════════════════════════════════ */
+function fmtUTC(date) {
+  if (!date) return '—';
+  return date.toISOString().replace('T',' ').substring(0,19);
+}
+
+function deg(val) {
+  return val !== undefined ? val.toFixed(0) + '°' : '—';
+}
+
+function showMsg(id, text, type) {
+  document.getElementById(id).innerHTML = `<div class="msg ${type}">${text}</div>`;
+}
+</script>
+</body>
+</html>
