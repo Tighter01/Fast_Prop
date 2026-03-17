@@ -209,6 +209,22 @@
 
     .sat-file-list { display: flex; flex-wrap: wrap; gap: .4rem; margin-top: .5rem; }
     .rt-footer { text-align: right; font-size: .7rem; color: var(--muted); margin-top: .45rem; }
+
+    /* ── POLAR PLOT ── */
+    #polarCanvas {
+      display: block;
+      border-radius: 8px;
+      margin: 0 auto;
+    }
+    .polar-legend {
+      display: flex; gap: 1rem; flex-wrap: wrap;
+      justify-content: center; margin-top: .6rem;
+      font-size: .7rem; color: var(--muted);
+    }
+    .polar-legend span { display: flex; align-items: center; gap: .3rem; }
+    .polar-legend i {
+      display: inline-block; width: 20px; height: 3px; border-radius: 2px;
+    }
   </style>
 </head>
 <body>
@@ -319,6 +335,18 @@
     <div class="rt-footer" id="rtClock">-</div>
   </div>
 
+  <!-- ══════════ POLAR PLOT ══════════ -->
+  <div class="card">
+    <div class="card-title">🎯 Sky View — Az/El Polar Plot</div>
+    <canvas id="polarCanvas"></canvas>
+    <div class="polar-legend">
+      <span><i style="background:rgba(88,166,255,0.6)"></i> Trail (past 2 min)</span>
+      <span><i style="background:rgba(227,179,65,0.7);border-top:2px dashed var(--yellow);height:0"></i> Lookahead (15 min)</span>
+      <span><i style="width:10px;height:10px;border-radius:50%;background:var(--green)"></i> Above horizon</span>
+      <span><i style="width:10px;height:10px;border-radius:50%;background:var(--muted)"></i> Below horizon</span>
+    </div>
+  </div>
+
   <!-- ══════════ PASS PREDICTION ══════════ -->
   <div class="card">
     <div class="card-title">🔭 Pass Prediction</div>
@@ -372,6 +400,10 @@ let rtInterval     = null;
 let fileSatellites = [];
 let dirForward     = true;   // true = forward, false = backward
 
+// Polar plot state
+const TRAIL_MAX  = 120;  // ~2 min at 1 s/sample
+let   polarTrail = [];   // [{az, el}]
+
 const DEFAULTS = {
   sat: { id: '67685', name: 'CORAL' },
   loc: { lon: 12.4920, lat: 41.8997, alt: 50 }
@@ -382,6 +414,7 @@ const DEFAULTS = {
 ══════════════════════════════════════════════════════════════ */
 window.addEventListener('DOMContentLoaded', () => {
   selectDefaultLoc();
+  initPolarCanvas();
 
   ['lon','lat','alt'].forEach(id =>
     document.getElementById(id).addEventListener('input', () =>
@@ -389,6 +422,8 @@ window.addEventListener('DOMContentLoaded', () => {
     )
   );
 });
+
+window.addEventListener('resize', initPolarCanvas);
 
 /* ══════════════════════════════════════════════════════════════
    DIRECTION TOGGLE
@@ -783,6 +818,196 @@ function renderPasses(passes, minEl, hours, dir) {
 
   html += '</tbody></table></div>';
   container.innerHTML = html;
+}
+
+/* ══════════════════════════════════════════════════════════════
+   POLAR PLOT
+══════════════════════════════════════════════════════════════ */
+function initPolarCanvas() {
+  const canvas = document.getElementById('polarCanvas');
+  if (!canvas) return;
+  const available = canvas.parentElement.clientWidth - 40;
+  const size = Math.max(200, Math.min(available, 340));
+  canvas.width  = size;
+  canvas.height = size;
+  drawPolarGrid(size);
+}
+
+/** Convert azimuth (°, CW from N) + elevation (°) → canvas (x,y) */
+function azElToXY(az, el, cx, cy, r) {
+  const dist  = r * (1 - Math.max(el, 0) / 90);
+  const angle = (az - 90) * Math.PI / 180;
+  return { x: cx + dist * Math.cos(angle), y: cy + dist * Math.sin(angle) };
+}
+
+function drawPolarGrid(size) {
+  const canvas = document.getElementById('polarCanvas');
+  if (!canvas) return;
+  if (size === undefined) size = canvas.width;
+  const ctx = canvas.getContext('2d');
+  const cx = size / 2, cy = size / 2;
+  const r  = size / 2 - 22;
+
+  ctx.clearRect(0, 0, size, size);
+
+  // Dark background circle
+  ctx.beginPath();
+  ctx.arc(cx, cy, r, 0, 2 * Math.PI);
+  ctx.fillStyle = '#0a0e14';
+  ctx.fill();
+
+  // Elevation rings: 0° (horizon), 30°, 60°
+  [0, 30, 60].forEach(el => {
+    const rr = r * (1 - el / 90);
+    ctx.beginPath();
+    ctx.arc(cx, cy, rr, 0, 2 * Math.PI);
+    ctx.strokeStyle = el === 0 ? '#2d333b' : '#1e242c';
+    ctx.lineWidth   = el === 0 ? 1.5 : 1;
+    ctx.setLineDash([]);
+    ctx.stroke();
+    // Elevation label (right side)
+    if (el > 0) {
+      ctx.fillStyle    = '#4a5060';
+      ctx.font         = `10px system-ui`;
+      ctx.textAlign    = 'left';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(el + '°', cx + rr + 2, cy - 3);
+    }
+  });
+
+  // Zenith dot
+  ctx.beginPath();
+  ctx.arc(cx, cy, 2.5, 0, 2 * Math.PI);
+  ctx.fillStyle = '#2d333b';
+  ctx.fill();
+
+  // Cardinal lines
+  const cardinals = [
+    { label: 'N', az: 0,   color: '#f85149', bold: true  },
+    { label: 'E', az: 90,  color: '#4a5060', bold: false },
+    { label: 'S', az: 180, color: '#4a5060', bold: false },
+    { label: 'W', az: 270, color: '#4a5060', bold: false }
+  ];
+  cardinals.forEach(d => {
+    const angle = (d.az - 90) * Math.PI / 180;
+    ctx.beginPath();
+    ctx.moveTo(cx, cy);
+    ctx.lineTo(cx + r * Math.cos(angle), cy + r * Math.sin(angle));
+    ctx.strokeStyle = '#1e242c';
+    ctx.lineWidth   = 1;
+    ctx.setLineDash([3, 4]);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    const lx = cx + (r + 13) * Math.cos(angle);
+    const ly = cy + (r + 13) * Math.sin(angle);
+    ctx.fillStyle    = d.color;
+    ctx.font         = `${d.bold ? 'bold ' : ''}${d.bold ? 13 : 11}px system-ui`;
+    ctx.textAlign    = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(d.label, lx, ly);
+  });
+}
+
+function computeLookaheadArc(minutes = 15, stepSec = 15) {
+  if (!currentSatrec) return [];
+  const obs = getObserver();
+  const pts = [];
+  const now = new Date();
+  for (let s = 0; s <= minutes * 60; s += stepSec) {
+    const t   = new Date(now.getTime() + s * 1000);
+    const pos = computeSatPos(currentSatrec, t, obs);
+    if (pos) pts.push({ az: pos.az, el: pos.el });
+  }
+  return pts;
+}
+
+function updatePolarPlot(az, el) {
+  const canvas = document.getElementById('polarCanvas');
+  if (!canvas) return;
+  const ctx  = canvas.getContext('2d');
+  const size = canvas.width;
+  const cx   = size / 2, cy = size / 2;
+  const r    = size / 2 - 22;
+
+  // Append to trail
+  polarTrail.push({ az, el });
+  if (polarTrail.length > TRAIL_MAX) polarTrail.shift();
+
+  // Redraw grid
+  drawPolarGrid(size);
+
+  // ── Lookahead arc (dashed yellow) ──
+  const ahead = computeLookaheadArc(15, 15);
+  if (ahead.length > 1) {
+    ctx.save();
+    ctx.setLineDash([4, 5]);
+    ctx.strokeStyle = 'rgba(227,179,65,0.55)';
+    ctx.lineWidth   = 1.5;
+    ctx.beginPath();
+    let first = true;
+    for (const pt of ahead) {
+      const p = azElToXY(pt.az, pt.el, cx, cy, r);
+      // If below horizon, clamp to ring boundary
+      if (first) { ctx.moveTo(p.x, p.y); first = false; }
+      else        { ctx.lineTo(p.x, p.y); }
+    }
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  // ── Trail (solid blue) ──
+  const visible = polarTrail.filter(p => p.el > 0);
+  if (visible.length > 1) {
+    ctx.save();
+    ctx.strokeStyle = 'rgba(88,166,255,0.65)';
+    ctx.lineWidth   = 2;
+    ctx.lineJoin    = 'round';
+    ctx.beginPath();
+    let first = true;
+    for (const pt of polarTrail) {
+      if (pt.el <= 0) { first = true; continue; }
+      const p = azElToXY(pt.az, pt.el, cx, cy, r);
+      if (first) { ctx.moveTo(p.x, p.y); first = false; }
+      else        { ctx.lineTo(p.x, p.y); }
+    }
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  // ── Current position dot ──
+  const clampedEl = Math.max(el, 0);
+  const dot = azElToXY(az, clampedEl, cx, cy, r);
+  const aboveHorizon = el > 0;
+
+  // Glow for above-horizon
+  if (aboveHorizon) {
+    ctx.save();
+    const grad = ctx.createRadialGradient(dot.x, dot.y, 0, dot.x, dot.y, 10);
+    grad.addColorStop(0, 'rgba(63,185,80,0.45)');
+    grad.addColorStop(1, 'rgba(63,185,80,0)');
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.arc(dot.x, dot.y, 10, 0, 2 * Math.PI);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  ctx.beginPath();
+  ctx.arc(dot.x, dot.y, 5, 0, 2 * Math.PI);
+  ctx.fillStyle   = aboveHorizon ? '#3fb950' : '#7d8590';
+  ctx.strokeStyle = '#fff';
+  ctx.lineWidth   = 1.2;
+  ctx.fill();
+  ctx.stroke();
+
+  // ── Az / El readout (bottom-left of canvas) ──
+  const label = `Az ${az.toFixed(0)}°  El ${el.toFixed(0)}°`;
+  ctx.font         = `11px 'SF Mono','Fira Code',monospace`;
+  ctx.textAlign    = 'left';
+  ctx.textBaseline = 'bottom';
+  ctx.fillStyle    = aboveHorizon ? '#3fb950' : '#7d8590';
+  ctx.fillText(label, 6, size - 5);
 }
 
 /* ══════════════════════════════════════════════════════════════
