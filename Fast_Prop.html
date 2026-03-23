@@ -411,6 +411,7 @@ const TRAIL_MAX  = 120;  // ~2 min at 1 s/sample
 let   polarTrail = [];   // [{az, el}]
 let   lastPasses = [];   // Saved passes for polar plot click
 let   polarLocked = false; // true = showing a pass, block live updates
+let   polarLockedIdx = -1; // index of the pass currently shown
 
 const DEFAULTS = {
   sat: { id: '67685', name: 'CORAL' },
@@ -843,6 +844,8 @@ function initPolarCanvas() {
   canvas.width  = size;
   canvas.height = size;
   drawPolarGrid(size);
+  // Redraw locked pass after resize (mobile address bar hide/show)
+  if (polarLocked && polarLockedIdx >= 0) showPassOnPolar(polarLockedIdx);
 }
 
 /** Convert azimuth (°, CW from N) + elevation (°) → canvas (x,y) */
@@ -1024,8 +1027,9 @@ function updatePolarPlot(az, el) {
 }
 
 function backToLive() {
-  polarLocked = false;
-  polarTrail  = [];
+  polarLocked    = false;
+  polarLockedIdx = -1;
+  polarTrail     = [];
   document.getElementById('btnBackToLive').style.display = 'none';
   // Unhighlight pass rows
   document.querySelectorAll('#passResults tbody tr').forEach(row => row.style.background = '');
@@ -1037,7 +1041,8 @@ function showPassOnPolar(idx) {
   const pass = lastPasses[idx];
   if (!pass || !pass.aos || !pass.los || !currentSatrec) return;
 
-  polarLocked = true;
+  polarLocked    = true;
+  polarLockedIdx = idx;
   document.getElementById('btnBackToLive').style.display = '';
 
   const canvas = document.getElementById('polarCanvas');
