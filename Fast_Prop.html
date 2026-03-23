@@ -403,6 +403,7 @@ let dirForward     = true;   // true = forward, false = backward
 // Polar plot state
 const TRAIL_MAX  = 120;  // ~2 min at 1 s/sample
 let   polarTrail = [];   // [{az, el}]
+let   lastPasses = [];   // Saved passes for polar plot click
 
 const DEFAULTS = {
   sat: { id: '67685', name: 'CORAL' },
@@ -665,6 +666,9 @@ function updateRealtime() {
     status.textContent = `${currentTLEName} — below the horizon`;
     badge.innerHTML    = '<span class="badge b-below">▼ Not visible</span>';
   }
+
+  // Update polar plot with current position
+  updatePolarPlot(pos.az, pos.el);
 }
 
 /* ══════════════════════════════════════════════════════════════
@@ -745,6 +749,7 @@ async function computePasses() {
   document.getElementById('calcBtn').disabled = false;
 
   passes.sort((a, b) => a.aos - b.aos);
+  lastPasses = passes;
   renderPasses(passes, minEl, hours, dir);
 }
 
@@ -803,7 +808,7 @@ function renderPasses(passes, minEl, hours, dir) {
     if      (p.maxEl >= 45) elCls = 'el-high';
     else if (p.maxEl >= 15) elCls = 'el-med';
 
-    html += `<tr>
+    html += `<tr style="cursor:pointer" onclick="showPassOnPolar(${i})">
       <td>${i + 1}</td>
       <td style="font-family:monospace;font-size:.75rem">${fmtUTC(p.aos)}</td>
       <td>${deg(p.aosAz)}</td>
@@ -1008,6 +1013,116 @@ function updatePolarPlot(az, el) {
   ctx.textBaseline = 'bottom';
   ctx.fillStyle    = aboveHorizon ? '#3fb950' : '#7d8590';
   ctx.fillText(label, 6, size - 5);
+}
+
+function showPassOnPolar(idx) {
+  const pass = lastPasses[idx];
+  if (!pass || !pass.aos || !pass.los || !currentSatrec) return;
+
+  const canvas = document.getElementById('polarCanvas');
+  if (!canvas) return;
+  const ctx  = canvas.getContext('2d');
+  const size = canvas.width;
+  const cx   = size / 2, cy = size / 2;
+  const r    = size / 2 - 22;
+
+  // Compute the full pass arc from AOS to LOS
+  const obs = getObserver();
+  const pts = [];
+  const stepMs = 5000; // 5-second steps
+  for (let t = pass.aos.getTime(); t <= pass.los.getTime(); t += stepMs) {
+    const pos = computeSatPos(currentSatrec, new Date(t), obs);
+    if (pos) pts.push({ az: pos.az, el: pos.el, time: t });
+  }
+  // Ensure we include LOS
+  const posLos = computeSatPos(currentSatrec, pass.los, obs);
+  if (posLos) pts.push({ az: posLos.az, el: posLos.el, time: pass.los.getTime() });
+
+  if (pts.length < 2) return;
+
+  // Clear trail so it doesn't interfere
+  polarTrail = [];
+
+  // Redraw grid
+  drawPolarGrid(size);
+
+  // ── Pass arc (solid cyan) ──
+  ctx.save();
+  ctx.strokeStyle = 'rgba(88,166,255,0.8)';
+  ctx.lineWidth   = 2.5;
+  ctx.lineJoin    = 'round';
+  ctx.beginPath();
+  let first = true;
+  for (const pt of pts) {
+    const p = azElToXY(pt.az, Math.max(pt.el, 0), cx, cy, r);
+    if (first) { ctx.moveTo(p.x, p.y); first = false; }
+    else       { ctx.lineTo(p.x, p.y); }
+  }
+  ctx.stroke();
+  ctx.restore();
+
+  // ── AOS marker (green) ──
+  const aosP = azElToXY(pts[0].az, Math.max(pts[0].el, 0), cx, cy, r);
+  ctx.beginPath();
+  ctx.arc(aosP.x, aosP.y, 5, 0, 2 * Math.PI);
+  ctx.fillStyle   = '#3fb950';
+  ctx.strokeStyle = '#fff';
+  ctx.lineWidth   = 1.2;
+  ctx.fill();
+  ctx.stroke();
+
+  // ── LOS marker (red) ──
+  const losP = azElToXY(pts[pts.length - 1].az, Math.max(pts[pts.length - 1].el, 0), cx, cy, r);
+  ctx.beginPath();
+  ctx.arc(losP.x, losP.y, 5, 0, 2 * Math.PI);
+  ctx.fillStyle   = '#f85149';
+  ctx.strokeStyle = '#fff';
+  ctx.lineWidth   = 1.2;
+  ctx.fill();
+  ctx.stroke();
+
+  // ── TCA marker (yellow star) ──
+  const tcaP = azElToXY(pass.maxElAz, Math.max(pass.maxEl, 0), cx, cy, r);
+  ctx.beginPath();
+  ctx.arc(tcaP.x, tcaP.y, 4, 0, 2 * Math.PI);
+  ctx.fillStyle   = '#e3b341';
+  ctx.strokeStyle = '#fff';
+  ctx.lineWidth   = 1.2;
+  ctx.fill();
+  ctx.stroke();
+
+  // ── Labels ──
+  ctx.font         = `10px 'SF Mono','Fira Code',monospace`;
+  ctx.textBaseline = 'bottom';
+
+  ctx.fillStyle = '#3fb950';
+  ctx.textAlign = 'left';
+  ctx.fillText('AOS', aosP.x + 7, aosP.y - 2);
+
+  ctx.fillStyle = '#f85149';
+  ctx.textAlign = 'right';
+  ctx.fillText('LOS', losP.x - 7, losP.y - 2);
+
+  ctx.fillStyle = '#e3b341';
+  ctx.textAlign = 'center';
+  ctx.fillText(`${pass.maxEl.toFixed(0)}°`, tcaP.x, tcaP.y - 8);
+
+  // ── Pass info readout ──
+  const info = `Pass #${idx + 1}  Max El ${pass.maxEl.toFixed(1)}°`;
+  ctx.font         = `11px 'SF Mono','Fira Code',monospace`;
+  ctx.textAlign    = 'left';
+  ctx.textBaseline = 'bottom';
+  ctx.fillStyle    = '#58a6ff';
+  ctx.fillText(info, 6, size - 5);
+
+  // Highlight clicked row
+  const rows = document.querySelectorAll('#passResults tbody tr');
+  rows.forEach((row, i) => {
+    row.style.background = i === idx ? 'rgba(88,166,255,0.12)' : '';
+  });
+
+  // Scroll polar plot into view
+  canvas.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
 
 /* ══════════════════════════════════════════════════════════════
