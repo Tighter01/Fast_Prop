@@ -337,7 +337,13 @@
 
   <!-- ══════════ POLAR PLOT ══════════ -->
   <div class="card">
-    <div class="card-title">🎯 Sky View — Az/El Polar Plot</div>
+    <div class="card-title" style="display:flex;align-items:center;justify-content:space-between">
+      🎯 Sky View — Az/El Polar Plot
+      <button id="btnBackToLive" class="btn" onclick="backToLive()"
+        style="display:none;font-size:.7rem;padding:3px 10px;background:var(--green);color:#000;border:none;border-radius:4px;cursor:pointer">
+        ◉ LIVE
+      </button>
+    </div>
     <canvas id="polarCanvas"></canvas>
     <div class="polar-legend">
       <span><i style="background:rgba(88,166,255,0.6)"></i> Trail (past 2 min)</span>
@@ -404,6 +410,7 @@ let dirForward     = true;   // true = forward, false = backward
 const TRAIL_MAX  = 120;  // ~2 min at 1 s/sample
 let   polarTrail = [];   // [{az, el}]
 let   lastPasses = [];   // Saved passes for polar plot click
+let   polarLocked = false; // true = showing a pass, block live updates
 
 const DEFAULTS = {
   sat: { id: '67685', name: 'CORAL' },
@@ -928,6 +935,7 @@ function computeLookaheadArc(minutes = 15, stepSec = 15) {
 }
 
 function updatePolarPlot(az, el) {
+  if (polarLocked) return;   // Pass view active — skip live updates
   const canvas = document.getElementById('polarCanvas');
   if (!canvas) return;
   const ctx  = canvas.getContext('2d');
@@ -1015,9 +1023,22 @@ function updatePolarPlot(az, el) {
   ctx.fillText(label, 6, size - 5);
 }
 
+function backToLive() {
+  polarLocked = false;
+  polarTrail  = [];
+  document.getElementById('btnBackToLive').style.display = 'none';
+  // Unhighlight pass rows
+  document.querySelectorAll('#passResults tbody tr').forEach(row => row.style.background = '');
+  // Immediately redraw with current position
+  drawPolarGrid();
+}
+
 function showPassOnPolar(idx) {
   const pass = lastPasses[idx];
   if (!pass || !pass.aos || !pass.los || !currentSatrec) return;
+
+  polarLocked = true;
+  document.getElementById('btnBackToLive').style.display = '';
 
   const canvas = document.getElementById('polarCanvas');
   if (!canvas) return;
